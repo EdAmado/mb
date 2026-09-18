@@ -1,6 +1,14 @@
 <template>
     <div class="min-h-screen text-gray-200 flex flex-col justify-center px-4 py-8 relative select-none">
 
+        <!-- CONFETTI CANVAS ON CORRECT ANSWER -->
+        <canvas ref="confettiCanvasRef" class="fixed inset-0 pointer-events-none z-50 w-full h-full"></canvas>
+
+        <!-- RED BACKGROUND FLASH ON WRONG ANSWER -->
+        <div class="fixed inset-0 pointer-events-none z-30 transition-opacity duration-700 ease-out"
+            :class="showRedFlash ? 'bg-red-600/25 opacity-100' : 'bg-transparent opacity-0'">
+        </div>
+
         <!-- FLOATING SCORE DELTA NOTIFICATION -->
         <transition name="fade-up">
             <div v-if="scoreDeltaNotification"
@@ -11,7 +19,7 @@
             </div>
         </transition>
 
-        <!-- SCORE MODAL (TRIGGERED BY 'V' OR CLICK) -->
+        <!-- SCORE MODAL (HOLD 'V' OR BUTTON TO OPEN) -->
         <transition name="fade">
             <div v-if="showScoreModal" @click.self="showScoreModal = false"
                 class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -57,10 +65,11 @@
                         </div>
                     </div>
 
-                    <button @click="showScoreModal = false"
-                        class="w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-bold transition text-center">
-                        Back to Game <kbd class="ml-2 bg-gray-600 px-1.5 py-0.5 rounded text-xs text-gray-300">V</kbd>
-                    </button>
+                    <div class="mt-4 pt-3 border-t border-gray-700/60 text-center">
+                        <p class="text-xs text-gray-400 font-mono">Hold <kbd
+                                class="bg-gray-700 px-1.5 py-0.5 rounded text-xs text-gray-200">V</kbd> or press & hold
+                            button to keep visible</p>
+                    </div>
                 </div>
             </div>
         </transition>
@@ -203,112 +212,119 @@
 
         <!-- 5. ACTIVE GAMEPLAY (SPLIT SCREEN LAYOUT IF QUESTION MEDIA EXISTS) -->
         <div v-else-if="gameState === 'playing' || gameState === 'review' || gameState === 'wrong_auto_next'"
-            class="max-w-6xl mx-auto w-full">
+            class="max-w-6xl mx-auto w-full overflow-hidden">
 
-            <div class="grid grid-cols-1 gap-6 items-start"
-                :class="hasQuestionImage ? 'lg:grid-cols-12' : hasOptionImages ? 'max-w-5xl mx-auto' : 'max-w-4xl mx-auto'">
+            <transition :name="isWrongRound ? '' : 'slide-question'" mode="out-in">
+                <div :key="currentIndex" class="w-full">
+                    <div class="grid grid-cols-1 gap-6 items-start"
+                        :class="hasQuestionImage ? 'lg:grid-cols-12' : hasOptionImages ? 'max-w-5xl mx-auto' : 'max-w-4xl mx-auto'">
 
-                <!-- LEFT MAIN PANEL: QUESTION, TIMER, OPTIONS -->
-                <div class="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl border border-gray-700 relative"
-                    :class="hasQuestionImage ? 'lg:col-span-7' : 'w-full'">
+                        <!-- LEFT MAIN PANEL: QUESTION, TIMER, OPTIONS -->
+                        <div class="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl border border-gray-700 relative"
+                            :class="hasQuestionImage ? 'lg:col-span-7' : 'w-full'">
 
-                    <!-- Top HUD -->
-                    <div
-                        class="flex justify-between items-center mb-6 text-gray-400 font-bold border-b border-gray-700 pb-4 text-sm md:text-base">
-                        <div class="flex items-center gap-2">
-                            <span>Question {{ currentIndex + 1 }} / {{ gameQuestions.length }}</span>
-                            <span class="text-xs px-2 py-0.5 rounded-full font-mono font-semibold"
-                                :class="isWrongRound ? 'bg-red-950 text-red-400 border border-red-700' : 'bg-gray-900 text-gray-400 border border-gray-700'">
-                                {{ currentPhaseTitle }}
-                            </span>
-                        </div>
-                        <div class="text-xl font-mono" :class="score < 0 ? 'text-red-400' : 'text-yellow-400'">Score: {{
-                            score }}</div>
-                    </div>
-
-                    <!-- Question Type Badge (Stealth Ghost: displays as normal basic round!) -->
-                    <div class="text-center mb-4">
-                        <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest"
-                            :class="displayedTypeBadge.class">
-                            {{ displayedTypeBadge.label }}
-                        </span>
-                    </div>
-
-                    <!-- Question Text -->
-                    <h2 class="text-2xl md:text-3xl font-extrabold text-center text-white mb-6 leading-snug">
-                        {{ currentQuestion.text }}
-                    </h2>
-
-                    <!-- Timer Bar -->
-                    <div class="w-full bg-gray-900 rounded-full h-3.5 mb-3 overflow-hidden border border-gray-700/60">
-                        <div class="h-full transition-all duration-75 ease-linear rounded-full"
-                            :class="timeLeft <= 3 ? 'bg-red-500' : isWrongRound ? 'bg-orange-500' : 'bg-blue-500'"
-                            :style="{ width: timerPercentage + '%' }"></div>
-                    </div>
-                    <div class="text-center text-xl font-mono font-bold mb-6"
-                        :class="timeLeft <= 2 ? 'text-red-400 animate-ping' : timeLeft <= 3 ? 'text-red-400' : 'text-gray-300'">
-                        {{ timeLeft }}s
-                    </div>
-
-                    <!-- Options Grid: Visual Image Cards if options have images -->
-                    <div v-if="hasOptionImages" class="grid gap-4"
-                        :class="hasQuestionImage ? 'grid-cols-2' : currentQuestion.options.length <= 2 ? 'grid-cols-2 max-w-lg mx-auto' : currentQuestion.options.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'">
-
-                        <button v-for="opt in currentQuestion.options" :key="opt.id" @click="selectOption(opt)"
-                            :disabled="gameState !== 'playing'"
-                            class="rounded-2xl border-2 overflow-hidden transition-all duration-200 flex flex-col group text-left relative focus:outline-none"
-                            :class="getOptionClass(opt)">
-
-                            <!-- Option Image Cover -->
+                            <!-- Top HUD -->
                             <div
-                                class="w-full h-36 sm:h-44 bg-gray-950 flex items-center justify-center overflow-hidden relative">
-                                <img v-if="opt.media_url" :src="getMediaUrl(opt.media_url)" :alt="opt.text"
-                                    class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                                <div v-else class="text-3xl text-gray-600">🖼️</div>
+                                class="flex justify-between items-center mb-6 text-gray-400 font-bold border-b border-gray-700 pb-4 text-sm md:text-base">
+                                <div class="flex items-center gap-2">
+                                    <span>Question {{ currentIndex + 1 }} / {{ gameQuestions.length }}</span>
+                                    <span class="text-xs px-2 py-0.5 rounded-full font-mono font-semibold"
+                                        :class="isWrongRound ? 'bg-red-950 text-red-400 border border-red-700' : 'bg-gray-900 text-gray-400 border border-gray-700'">
+                                        {{ currentPhaseTitle }}
+                                    </span>
+                                </div>
+                                <div class="text-xl font-mono" :class="score < 0 ? 'text-red-400' : 'text-yellow-400'">
+                                    Score: {{
+                                        score }}</div>
                             </div>
 
-                            <!-- Option Text Label -->
-                            <div class="p-3 text-center w-full font-bold text-sm sm:text-base truncate">
-                                {{ opt.text }}
+                            <!-- Question Type Badge (Stealth Ghost: displays as normal basic round!) -->
+                            <div class="text-center mb-4">
+                                <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest"
+                                    :class="displayedTypeBadge.class">
+                                    {{ displayedTypeBadge.label }}
+                                </span>
                             </div>
-                        </button>
-                    </div>
 
-                    <!-- Options Grid: Standard Text Buttons when options have NO images -->
-                    <div v-else class="grid grid-cols-1 gap-3.5"
-                        :class="currentQuestion.options && currentQuestion.options.length > 2 ? 'sm:grid-cols-2' : 'grid-cols-1'">
+                            <!-- Question Text -->
+                            <h2 class="text-2xl md:text-3xl font-extrabold text-center text-white mb-6 leading-snug">
+                                {{ currentQuestion.text }}
+                            </h2>
 
-                        <button v-for="opt in currentQuestion.options" :key="opt.id" @click="selectOption(opt)"
-                            :disabled="gameState !== 'playing'"
-                            class="p-4 rounded-xl text-base md:text-lg font-bold transition-all border-2 flex items-center justify-between text-left gap-3 relative overflow-hidden"
-                            :class="getOptionClass(opt)">
-                            <span class="flex-1">{{ opt.text }}</span>
-                        </button>
-                    </div>
+                            <!-- Timer Bar -->
+                            <div
+                                class="w-full bg-gray-900 rounded-full h-3.5 mb-3 overflow-hidden border border-gray-700/60">
+                                <div class="h-full transition-all duration-75 ease-linear rounded-full"
+                                    :class="timeLeft <= 3 ? 'bg-red-500' : isWrongRound ? 'bg-orange-500' : 'bg-blue-500'"
+                                    :style="{ width: timerPercentage + '%' }"></div>
+                            </div>
+                            <div class="text-center text-xl font-mono font-bold mb-6"
+                                :class="timeLeft <= 2 ? 'text-red-400 animate-ping' : timeLeft <= 3 ? 'text-red-400' : 'text-gray-300'">
+                                {{ timeLeft }}s
+                            </div>
 
-                    <!-- Wrong Round Auto-Advancing Indicator -->
-                    <div v-if="gameState === 'wrong_auto_next'"
-                        class="mt-4 text-center text-sm text-orange-400 font-mono animate-pulse">
-                        Next question incoming...
+                            <!-- Options Grid: Visual Image Cards if options have images -->
+                            <div v-if="hasOptionImages" class="grid gap-4"
+                                :class="hasQuestionImage ? 'grid-cols-2' : currentQuestion.options.length <= 2 ? 'grid-cols-2 max-w-lg mx-auto' : currentQuestion.options.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'">
+
+                                <button v-for="opt in currentQuestion.options" :key="opt.id" @click="selectOption(opt)"
+                                    :disabled="gameState !== 'playing'"
+                                    class="rounded-2xl border-2 overflow-hidden transition-all duration-200 flex flex-col group text-left relative focus:outline-none"
+                                    :class="getOptionClass(opt)">
+
+                                    <!-- Option Image Cover -->
+                                    <div
+                                        class="w-full h-36 sm:h-44 bg-gray-950 flex items-center justify-center overflow-hidden relative">
+                                        <img v-if="opt.media_url" :src="getMediaUrl(opt.media_url)" :alt="opt.text"
+                                            class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                        <div v-else class="text-3xl text-gray-600">🖼️</div>
+                                    </div>
+
+                                    <!-- Option Text Label -->
+                                    <div class="p-3 text-center w-full font-bold text-sm sm:text-base truncate">
+                                        {{ opt.text }}
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- Options Grid: Standard Text Buttons when options have NO images -->
+                            <div v-else class="grid grid-cols-1 gap-3.5"
+                                :class="currentQuestion.options && currentQuestion.options.length > 2 ? 'sm:grid-cols-2' : 'grid-cols-1'">
+
+                                <button v-for="opt in currentQuestion.options" :key="opt.id" @click="selectOption(opt)"
+                                    :disabled="gameState !== 'playing'"
+                                    class="p-4 rounded-xl text-base md:text-lg font-bold transition-all border-2 flex items-center justify-between text-left gap-3 relative overflow-hidden"
+                                    :class="getOptionClass(opt)">
+                                    <span class="flex-1">{{ opt.text }}</span>
+                                </button>
+                            </div>
+
+                            <!-- Wrong Round Auto-Advancing Indicator -->
+                            <div v-if="gameState === 'wrong_auto_next'"
+                                class="mt-4 text-center text-sm text-orange-400 font-mono animate-pulse">
+                                Next question incoming...
+                            </div>
+                        </div>
+
+                        <!-- RIGHT SIDE PANEL: QUESTION MEDIA (ONLY FOR THE QUESTION'S OWN IMAGE) -->
+                        <div v-if="hasQuestionImage"
+                            class="lg:col-span-5 bg-gray-800 p-6 rounded-2xl shadow-2xl border border-gray-700 space-y-4">
+                            <h4
+                                class="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                                <span>🖼️</span> Question Media
+                            </h4>
+
+                            <!-- Question Image -->
+                            <div
+                                class="rounded-xl overflow-hidden border border-gray-700 bg-gray-950 flex justify-center items-center p-2">
+                                <img :src="getMediaUrl(currentQuestion.media_url)" alt="Question Media"
+                                    class="max-h-80 w-auto object-contain rounded-lg shadow-md" />
+                            </div>
+                        </div>
+
                     </div>
                 </div>
-
-                <!-- RIGHT SIDE PANEL: QUESTION MEDIA (ONLY FOR THE QUESTION'S OWN IMAGE) -->
-                <div v-if="hasQuestionImage"
-                    class="lg:col-span-5 bg-gray-800 p-6 rounded-2xl shadow-2xl border border-gray-700 space-y-4">
-                    <h4 class="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                        <span>🖼️</span> Question Media
-                    </h4>
-
-                    <!-- Question Image -->
-                    <div
-                        class="rounded-xl overflow-hidden border border-gray-700 bg-gray-950 flex justify-center items-center p-2">
-                        <img :src="getMediaUrl(currentQuestion.media_url)" alt="Question Media"
-                            class="max-h-80 w-auto object-contain rounded-lg shadow-md" />
-                    </div>
-                </div>
-
-            </div>
+            </transition>
         </div>
 
         <!-- 6. GAME OVER SCREEN -->
@@ -328,7 +344,7 @@
                         <span class="text-xs text-gray-400 uppercase">Correct Answers</span>
                         <div class="text-2xl font-bold text-green-400 mt-1">{{ correctCount }} / {{
                             gameQuestions.length
-                            }}</div>
+                        }}</div>
                     </div>
                     <div>
                         <span class="text-xs text-gray-400 uppercase">Accuracy</span>
@@ -358,10 +374,14 @@
             <div v-if="showBottomActionBar"
                 class="fixed bottom-6 right-6 z-40 flex items-center space-x-3 bg-gray-900/95 border border-gray-700 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md">
 
-                <button @click="showScoreModal = true" type="button"
-                    class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl border border-gray-700 text-sm flex items-center gap-2 transition hover:scale-105"
-                    title="View current score (Press 'V')">
-                    <kbd class="bg-gray-700 px-1.5 py-0.5 rounded text-xs text-white border border-gray-600">V</kbd>
+                <button @mousedown="showScoreModal = true" @mouseup="showScoreModal = false"
+                    @mouseleave="showScoreModal = false" @touchstart.prevent="showScoreModal = true"
+                    @touchend.prevent="showScoreModal = false" @touchcancel.prevent="showScoreModal = false"
+                    type="button"
+                    class="px-4 py-2 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-yellow-400 font-bold rounded-xl border border-gray-700 text-sm flex items-center gap-2 transition hover:scale-105 select-none cursor-pointer"
+                    title="Hold 'V' or press & hold this button to view score">
+                    <kbd class="bg-gray-700 px-1.5 py-0.5 rounded text-xs text-white border border-gray-600">Hold
+                        V</kbd>
                     <span>View Score</span>
                 </button>
 
@@ -422,6 +442,130 @@ let deltaTimeout = null
 
 // Modals & Keyboard Controls
 const showScoreModal = ref(false)
+
+// Visual Feedback (Confetti on Correct, Red Flash on Wrong) & Audio Tick
+const showRedFlash = ref(false)
+let redFlashTimeout = null
+
+const confettiCanvasRef = ref(null)
+let confettiAnimId = null
+let confettiParticles = []
+
+const lastTickedSecond = ref(null)
+let audioCtx = null
+
+const getAudioContext = () => {
+    if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext
+        if (AudioContextClass) {
+            audioCtx = new AudioContextClass()
+        }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => { })
+    }
+    return audioCtx
+}
+
+const playTickSound = (sec) => {
+    try {
+        const ctx = getAudioContext()
+        if (!ctx) return
+
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+
+        const baseFreq = 750 + (6 - sec) * 60
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(baseFreq, ctx.currentTime)
+
+        gain.gain.setValueAtTime(0.3, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08)
+
+        osc.start(ctx.currentTime)
+        osc.stop(ctx.currentTime + 0.08)
+    } catch (e) {
+        console.warn("Audio tick sound error:", e)
+    }
+}
+
+const CONFETTI_COLORS = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#eab308']
+
+const triggerConfetti = () => {
+    const canvas = confettiCanvasRef.value
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+
+    if (confettiAnimId) {
+        cancelAnimationFrame(confettiAnimId)
+        confettiAnimId = null
+    }
+
+    confettiParticles = []
+    const count = 90
+    for (let i = 0; i < count; i++) {
+        confettiParticles.push({
+            x: Math.random() * canvas.width,
+            y: -20 - Math.random() * 80,
+            w: 8 + Math.random() * 8,
+            h: 12 + Math.random() * 10,
+            vx: -2 + Math.random() * 4,
+            vy: 3 + Math.random() * 5,
+            rot: Math.random() * Math.PI * 2,
+            vRot: -0.1 + Math.random() * 0.2,
+            color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+            alpha: 1
+        })
+    }
+
+    const startTime = Date.now()
+    const duration = 2600
+
+    const render = () => {
+        const elapsed = Date.now() - startTime
+        if (elapsed > duration) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            confettiAnimId = null
+            return
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+        const fadeRatio = elapsed > duration - 600 ? (duration - elapsed) / 600 : 1
+
+        for (const p of confettiParticles) {
+            p.x += p.vx
+            p.y += p.vy
+            p.rot += p.vRot
+
+            ctx.save()
+            ctx.translate(p.x, p.y)
+            ctx.rotate(p.rot)
+            ctx.fillStyle = p.color
+            ctx.globalAlpha = Math.max(0, p.alpha * fadeRatio)
+            ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
+            ctx.restore()
+        }
+
+        confettiAnimId = requestAnimationFrame(render)
+    }
+
+    confettiAnimId = requestAnimationFrame(render)
+}
+
+const triggerRedFlash = () => {
+    showRedFlash.value = true
+    if (redFlashTimeout) clearTimeout(redFlashTimeout)
+    redFlashTimeout = setTimeout(() => {
+        showRedFlash.value = false
+    }, 700)
+}
 
 // Round intro animation state
 const roundIntroType = ref('')
@@ -512,7 +656,9 @@ const getMediaUrl = (url) => {
 }
 
 onMounted(async () => {
-    window.addEventListener('keydown', handleKeyPress)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleWindowBlur)
     await fetchPoolQuestions()
     if (rawPoolQuestions.value.length > 0) {
         startGame()
@@ -520,13 +666,22 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-    window.removeEventListener('keydown', handleKeyPress)
+    window.removeEventListener('keydown', handleKeyDown)
+    window.removeEventListener('keyup', handleKeyUp)
+    window.removeEventListener('blur', handleWindowBlur)
     stopCurrentAudio()
     clearInterval(timerInterval.value)
     clearInterval(roundIntroTimer)
     clearInterval(musicCountdownTimer)
     clearInterval(audioPlaybackTimer)
     clearTimeout(deltaTimeout)
+    if (redFlashTimeout) clearTimeout(redFlashTimeout)
+    if (confettiAnimId) cancelAnimationFrame(confettiAnimId)
+    if (audioCtx) {
+        try {
+            audioCtx.close()
+        } catch (e) { }
+    }
 })
 
 // --- POOL SAMPLING (20 QUESTIONS) ---
@@ -732,6 +887,7 @@ const onMusicAudioEnded = () => {
 const startActiveQuestionTimer = () => {
     gameState.value = 'playing'
     stopCurrentAudio()
+    lastTickedSecond.value = null
 
     // Static 5s for Wrong round, user-chosen gameTimeLimit for others
     const durationSec = isWrongRound.value ? 5 : gameTimeLimit.value
@@ -746,7 +902,14 @@ const startActiveQuestionTimer = () => {
         const elapsed = Date.now() - questionStartTime.value
         const remaining = Math.max(0, questionTotalMs.value - elapsed)
         timeLeftMs.value = remaining
-        timeLeft.value = Math.ceil(remaining / 1000)
+        const sec = Math.ceil(remaining / 1000)
+        timeLeft.value = sec
+
+        // Audio tick sound effect on the last 5 seconds (not on wrong round)
+        if (!isWrongRound.value && sec <= 5 && sec >= 1 && lastTickedSecond.value !== sec) {
+            lastTickedSecond.value = sec
+            playTickSound(sec)
+        }
 
         if (remaining <= 0) {
             clearInterval(timerInterval.value)
@@ -788,9 +951,11 @@ const selectOption = (opt) => {
         delta = pointsMagnitude
         score.value += delta
         correctCount.value++
+        triggerConfetti()
     } else {
         delta = -pointsMagnitude
         score.value += delta // Score can go negative!
+        triggerRedFlash()
     }
 
     lastScoreDelta.value = delta
@@ -815,9 +980,11 @@ const handleTimeUp = () => {
         score.value += delta
         lastScoreDelta.value = delta
         triggerScoreDeltaNotification(delta)
+        triggerConfetti()
     } else {
         // No option picked on time: 0 points
         lastScoreDelta.value = 0
+        triggerRedFlash()
     }
 
     handleQuestionResolution()
@@ -886,18 +1053,31 @@ const proceedToNext = () => {
     }
 }
 
-const handleKeyPress = (e) => {
+const handleKeyDown = (e) => {
     const key = e.key.toLowerCase()
 
-    // 'V' toggles Score Modal
+    // Hold 'V' to view Score Modal
     if (key === 'v') {
-        showScoreModal.value = !showScoreModal.value
+        if (!e.repeat) {
+            showScoreModal.value = true
+        }
     }
 
     // 'B' proceeds if in review or ghost_reveal state
     if (key === 'b' && (gameState.value === 'review' || gameState.value === 'ghost_reveal')) {
         proceedToNext()
     }
+}
+
+const handleKeyUp = (e) => {
+    const key = e.key.toLowerCase()
+    if (key === 'v') {
+        showScoreModal.value = false
+    }
+}
+
+const handleWindowBlur = () => {
+    showScoreModal.value = false
 }
 
 const endGame = async () => {
@@ -1116,5 +1296,24 @@ const getOptionClass = (opt) => {
 .fade-up-leave-to {
     opacity: 0;
     transform: translateY(-20px);
+}
+
+/* Slide animation between questions (1s total: 0.5s leave + 0.5s enter, excluded for wrong questions) */
+.slide-question-enter-active {
+    transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.slide-question-leave-active {
+    transition: all 0.5s cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+.slide-question-enter-from {
+    opacity: 0;
+    transform: translateX(60px);
+}
+
+.slide-question-leave-to {
+    opacity: 0;
+    transform: translateX(-60px);
 }
 </style>
