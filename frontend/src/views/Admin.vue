@@ -208,7 +208,7 @@
                     title="Toggle table sort order by date">
                     <span>Sort:</span>
                     <span class="text-blue-400 font-bold">{{ sortOrder === 'desc' ? 'Most Recent ↓' : 'Oldest First ↑'
-                    }}</span>
+                        }}</span>
                 </button>
             </div>
         </div>
@@ -338,8 +338,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-const API_BASE = 'http://localhost:5000/api'
-const SERVER_BASE = 'http://localhost:5000'
+const API_BASE = '/api'
+const SERVER_BASE = ''
 const questions = ref([])
 const editingQuestionId = ref(null)
 const formError = ref('')

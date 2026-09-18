@@ -344,7 +344,7 @@
                         <span class="text-xs text-gray-400 uppercase">Correct Answers</span>
                         <div class="text-2xl font-bold text-green-400 mt-1">{{ correctCount }} / {{
                             gameQuestions.length
-                        }}</div>
+                            }}</div>
                     </div>
                     <div>
                         <span class="text-xs text-gray-400 uppercase">Accuracy</span>
@@ -401,7 +401,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 
-const API_BASE = 'http://localhost:5000'
+const API_BASE = ''
 const route = useRoute()
 
 // Base settings from landing page route query

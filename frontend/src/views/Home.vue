@@ -129,7 +129,7 @@
                                     </td>
                                     <td class="p-3 text-center">
                                         <span class="text-green-400 font-bold font-mono">{{ g.correct_questions
-                                            }}</span>
+                                        }}</span>
                                         <span class="text-gray-500 font-mono text-xs"> / 20</span>
                                     </td>
                                     <td class="p-3 text-right text-xs text-gray-400 font-mono">
@@ -154,7 +154,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
-const API_BASE = 'http://localhost:5000'
+const API_BASE = ''
 const router = useRouter()
 
 const timeLimit = ref(10)
