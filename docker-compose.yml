@@ -19,6 +19,7 @@ services:
       - "5000:5000"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://mrbecause:mrbecause_pass@db:5432/mrbecause_db}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
     depends_on:
       - db
     volumes:

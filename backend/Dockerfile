@@ -10,4 +10,4 @@ COPY . .
 # Ensure uploads directory exists
 RUN mkdir -p /app/uploads
 
-CMD ["flask", "run", "--host=0.0.0.0"]
+CMD ["python", "app.py"]

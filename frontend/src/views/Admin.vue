@@ -1,18 +1,70 @@
 <template>
-    <div class="max-w-6xl mx-auto p-6 text-gray-200">
-        <div class="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
-            <h1 class="text-3xl font-bold text-blue-400">Questions Management</h1>
-            <router-link to="/" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded font-medium transition">
-                Back to Home
-            </router-link>
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 text-gray-200">
+        <!-- PASSWORD LOCK SCREEN -->
+        <div v-if="!isAuthenticated" class="min-h-[75vh] flex items-center justify-center px-4">
+            <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 shadow-2xl max-w-md w-full text-center">
+                <div class="w-16 h-16 bg-blue-900/50 border border-blue-500/40 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-5 shadow-inner">
+                    🔒
+                </div>
+                
+                <h2 class="text-2xl font-bold text-white mb-2">Restricted Access</h2>
+                <p class="text-gray-400 text-sm mb-6">Enter the password to access and manage questions.</p>
+                
+                <div v-if="authError" class="mb-4 p-3 bg-red-900/60 border border-red-500 rounded-lg text-red-200 text-sm flex items-center justify-between">
+                    <span>{{ authError }}</span>
+                    <button @click="authError = ''" type="button" class="text-red-300 font-bold ml-2">✕</button>
+                </div>
+
+                <form @submit.prevent="handleUnlock" class="space-y-4">
+                    <input
+                        type="password"
+                        v-model="passwordInput"
+                        placeholder="Enter password"
+                        autocomplete="current-password"
+                        class="w-full p-3 bg-gray-900 rounded-xl border border-gray-600 focus:border-blue-500 outline-none text-white text-center font-mono placeholder-gray-500 text-base transition"
+                        autofocus
+                    />
+                    
+                    <button
+                        type="submit"
+                        :disabled="isCheckingPassword"
+                        class="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white rounded-xl font-bold transition shadow-lg hover:shadow-blue-500/20 text-center flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                        <span v-if="isCheckingPassword" class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        <span>{{ isCheckingPassword ? 'Verifying...' : 'Unlock' }}</span>
+                    </button>
+                </form>
+
+                <div class="mt-6 pt-6 border-t border-gray-700/60">
+                    <router-link to="/" class="text-sm text-gray-400 hover:text-white transition flex items-center justify-center gap-1.5 font-medium">
+                        ← Back to Home
+                    </router-link>
+                </div>
+            </div>
         </div>
 
+        <!-- MAIN QUESTIONS MANAGEMENT CONTENT -->
+        <div v-else>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8 border-b border-gray-700 pb-4">
+                <h1 class="text-2xl sm:text-3xl font-bold text-blue-400">Questions Management</h1>
+                <div class="flex items-center space-x-3 self-end sm:self-auto">
+                    <button @click="handleLock" type="button"
+                        class="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 rounded font-medium transition flex items-center gap-1.5 text-sm cursor-pointer"
+                        title="Lock and require password again">
+                        <span>🔒</span> Lock
+                    </button>
+                    <router-link to="/" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded font-medium transition text-sm">
+                        Back to Home
+                    </router-link>
+                </div>
+            </div>
+
         <!-- ADD / EDIT QUESTION FORM -->
-        <div id="question-form" class="bg-gray-800 p-6 rounded-lg shadow-lg mb-10 border"
+        <div id="question-form" class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg mb-8 sm:mb-10 border"
             :class="editingQuestionId ? 'border-blue-500 ring-1 ring-blue-500/50' : 'border-gray-700'">
-            <div class="flex justify-between items-center mb-4">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <div class="flex items-center space-x-3">
-                    <h2 class="text-2xl font-semibold text-white">
+                    <h2 class="text-xl sm:text-2xl font-semibold text-white">
                         {{ editingQuestionId ? `Edit Question #${editingQuestionId}` : 'Add New Question' }}
                     </h2>
                     <span v-if="editingQuestionId"
@@ -20,7 +72,7 @@
                         Editing Mode
                     </span>
                 </div>
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-3 self-end sm:self-auto">
                     <!-- Form Lock Toggle -->
                     <button type="button" @click="form.is_active = !form.is_active"
                         class="px-3 py-1 rounded text-xs font-bold border transition flex items-center space-x-1.5"
@@ -119,52 +171,55 @@
 
                 <div class="space-y-3 mt-4">
                     <div v-for="(opt, index) in form.options" :key="index"
-                        class="flex items-center space-x-3 bg-gray-900 p-3 rounded border border-gray-700">
+                        class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 bg-gray-900 p-3 rounded border border-gray-700">
 
-                        <!-- Option number -->
-                        <span class="text-xs font-mono text-gray-500 w-4 text-center">{{ index + 1 }}</span>
+                        <!-- Option number and text -->
+                        <div class="flex items-center space-x-2 flex-1 min-w-0">
+                            <span class="text-xs font-mono text-gray-500 w-4 text-center flex-shrink-0">{{ index + 1 }}</span>
+                            <input type="text" v-model="opt.text" placeholder="Option text"
+                                class="flex-1 p-2 bg-gray-800 rounded border border-gray-600 focus:border-blue-500 outline-none text-sm min-w-0" />
+                        </div>
 
-                        <!-- Option Text -->
-                        <input type="text" v-model="opt.text" placeholder="Option text"
-                            class="flex-1 p-2 bg-gray-800 rounded border border-gray-600 focus:border-blue-500 outline-none text-sm" />
-
-                        <!-- Upload Image for Option -->
-                        <div class="flex-1 flex items-center space-x-2">
-                            <input type="file" :ref="el => setOptionFileInput(el, index)"
-                                @change="e => uploadOptionMedia(e, index)" accept="image/*"
-                                class="text-xs text-gray-400 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-gray-700 file:text-gray-200 hover:file:bg-gray-600 cursor-pointer w-full" />
-                            <div v-if="opt.media_url" class="flex items-center space-x-1 flex-shrink-0">
-                                <img :src="getMediaUrl(opt.media_url)" alt="Option Preview"
-                                    class="h-9 w-9 rounded object-cover border border-gray-600" />
-                                <button @click="removeOptionMedia(index)" type="button"
-                                    class="text-red-400 hover:text-red-300 text-xs p-1"
-                                    title="Remove option image">✕</button>
+                        <!-- Upload Image + Correct toggle + Delete button -->
+                        <div class="flex items-center space-x-2 flex-1 min-w-0 pl-6 sm:pl-0">
+                            <!-- Upload Image for Option -->
+                            <div class="flex-1 flex items-center space-x-2 min-w-0">
+                                <input type="file" :ref="el => setOptionFileInput(el, index)"
+                                    @change="e => uploadOptionMedia(e, index)" accept="image/*"
+                                    class="text-xs text-gray-400 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-gray-700 file:text-gray-200 hover:file:bg-gray-600 cursor-pointer w-full" />
+                                <div v-if="opt.media_url" class="flex items-center space-x-1 flex-shrink-0">
+                                    <img :src="getMediaUrl(opt.media_url)" alt="Option Preview"
+                                        class="h-9 w-9 rounded object-cover border border-gray-600" />
+                                    <button @click="removeOptionMedia(index)" type="button"
+                                        class="text-red-400 hover:text-red-300 text-xs p-1"
+                                        title="Remove option image">✕</button>
+                                </div>
                             </div>
-                        </div>
 
-                        <!-- Mark Correct (Single selection for non-ghost, disabled for ghost) -->
-                        <div class="w-24 flex items-center justify-center flex-shrink-0">
-                            <span v-if="form.question_type === 'ghost'" class="text-xs text-purple-400 italic">
-                                All False
-                            </span>
-                            <label v-else class="flex items-center space-x-1.5 cursor-pointer select-none">
-                                <input type="radio" :name="'correct-option'" :checked="opt.is_correct"
-                                    @change="setCorrectOption(index)"
-                                    class="w-4 h-4 text-blue-600 focus:ring-0 cursor-pointer" />
-                                <span class="text-sm font-medium"
-                                    :class="opt.is_correct ? 'text-green-400 font-bold' : 'text-gray-400'">
-                                    Correct
+                            <!-- Mark Correct (Single selection for non-ghost, disabled for ghost) -->
+                            <div class="w-20 sm:w-24 flex items-center justify-center flex-shrink-0">
+                                <span v-if="form.question_type === 'ghost'" class="text-xs text-purple-400 italic">
+                                    All False
                                 </span>
-                            </label>
-                        </div>
+                                <label v-else class="flex items-center space-x-1.5 cursor-pointer select-none">
+                                    <input type="radio" :name="'correct-option'" :checked="opt.is_correct"
+                                        @change="setCorrectOption(index)"
+                                        class="w-4 h-4 text-blue-600 focus:ring-0 cursor-pointer" />
+                                    <span class="text-xs sm:text-sm font-medium"
+                                        :class="opt.is_correct ? 'text-green-400 font-bold' : 'text-gray-400'">
+                                        Correct
+                                    </span>
+                                </label>
+                            </div>
 
-                        <!-- Reserved Space for 'X' delete button (Always w-8 even if length <= 2) -->
-                        <div class="w-8 flex items-center justify-center flex-shrink-0">
-                            <button @click="removeOption(index)" v-if="form.options.length > 2" type="button"
-                                class="text-red-400 hover:text-red-300 hover:bg-red-900/40 p-1 rounded font-bold transition"
-                                title="Remove Option">
-                                ✕
-                            </button>
+                            <!-- Reserved Space for 'X' delete button (Always w-8 even if length <= 2) -->
+                            <div class="w-8 flex items-center justify-center flex-shrink-0">
+                                <button @click="removeOption(index)" v-if="form.options.length > 2" type="button"
+                                    class="text-red-400 hover:text-red-300 hover:bg-red-900/40 p-1 rounded font-bold transition"
+                                    title="Remove Option">
+                                    ✕
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -231,86 +286,47 @@
 
             <div v-else class="overflow-x-auto">
                 <table
-                    class="table-fixed w-full text-left border-collapse bg-gray-900/50 rounded-lg overflow-hidden border border-gray-800">
-                    <colgroup>
-                        <col style="width: 54px;" /> <!-- Pool / Lock -->
-                        <col style="width: 36%;" /> <!-- Question text -->
-                        <col style="width: 130px;" /> <!-- Created -->
-                        <col style="width: 120px;" /> <!-- Question with image? -->
-                        <col style="width: 80px;" /> <!-- Options count -->
-                        <col style="width: 120px;" /> <!-- Options with images? -->
-                        <col style="width: 90px;" /> <!-- Actions -->
-                    </colgroup>
+                    class="w-full text-left border-collapse bg-gray-900/50 rounded-lg overflow-hidden border border-gray-800">
                     <thead>
-                        <tr class="bg-gray-800 text-gray-300 text-sm select-none">
-                            <th class="p-3 text-center" title="Availability in game pool">Pool</th>
-                            <th class="p-3">Question</th>
-                            <th class="p-3">Created</th>
-                            <th class="p-3">Image?</th>
-                            <th class="p-3 text-center">Options</th>
-                            <th class="p-3">Option Imgs?</th>
-                            <th class="p-3 text-center">Actions</th>
+                        <tr class="bg-gray-800 text-gray-300 text-xs sm:text-sm select-none">
+                            <th class="p-2.5 sm:p-3 text-center w-px whitespace-nowrap" title="Availability in game pool">Pool</th>
+                            <th class="p-2.5 sm:p-3">Question</th>
+                            <th class="p-2.5 sm:p-3 w-px whitespace-nowrap">Created</th>
+                            <th class="p-2.5 sm:p-3 text-center w-px whitespace-nowrap">Options</th>
+                            <th class="p-2.5 sm:p-3 text-center w-px whitespace-nowrap">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-800 text-sm">
+                    <tbody class="divide-y divide-gray-800 text-xs sm:text-sm">
                         <tr v-for="q in group" :key="q.id" class="hover:bg-gray-800/40 transition">
 
-                            <!-- Lock / Game Pool Toggle -->
-                            <td class="p-3 text-center">
+                            <!-- Lock / Game Pool Toggle (Minimum Width) -->
+                            <td class="p-2.5 sm:p-3 text-center w-px whitespace-nowrap">
                                 <button @click="toggleLock(q)" type="button"
-                                    class="p-1 rounded text-lg transition hover:scale-125 focus:outline-none"
+                                    class="p-1 rounded text-base sm:text-lg transition hover:scale-125 focus:outline-none"
                                     :title="q.is_active ? 'In game pool. Click to lock (exclude from game).' : 'Locked (excluded from game). Click to unlock.'">
                                     {{ q.is_active ? '🔓' : '🔒' }}
                                 </button>
                             </td>
 
-                            <!-- Question Text (Truncated with Ellipsis) -->
-                            <td class="p-3 truncate" :title="q.text || '(No text)'">
+                            <!-- Question Text (Flexible / Maximum Width) -->
+                            <td class="p-2.5 sm:p-3 max-w-0" :title="q.text || '(No text)'">
                                 <span class="truncate block font-medium text-gray-200">
                                     {{ q.text || '(No text)' }}
                                 </span>
                             </td>
 
-                            <!-- Created Timestamp -->
-                            <td class="p-3 text-xs font-mono text-gray-400 whitespace-nowrap">
+                            <!-- Created Timestamp (Minimum Width) -->
+                            <td class="p-2.5 sm:p-3 text-xs font-mono text-gray-400 w-px whitespace-nowrap">
                                 {{ formatDate(q.created_at) }}
                             </td>
 
-                            <!-- Question Image Indicator -->
-                            <td class="p-3 whitespace-nowrap">
-                                <span v-if="q.media_url && q.question_type !== 'music_single'"
-                                    class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-green-900/60 text-green-300 border border-green-700">
-                                    ✓ Yes
-                                </span>
-                                <span v-else-if="q.question_type === 'music_single' && q.media_url"
-                                    class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700">
-                                    🎵 Audio
-                                </span>
-                                <span v-else
-                                    class="inline-flex items-center text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">
-                                    ✕ No
-                                </span>
-                            </td>
-
-                            <!-- Number of Options -->
-                            <td class="p-3 text-center font-mono text-gray-300">
+                            <!-- Number of Options (Minimum Width) -->
+                            <td class="p-2.5 sm:p-3 text-center font-mono text-gray-300 w-px whitespace-nowrap">
                                 {{ q.options ? q.options.length : 0 }}
                             </td>
 
-                            <!-- Options with Images Indicator -->
-                            <td class="p-3 whitespace-nowrap">
-                                <span v-if="hasOptionImages(q)"
-                                    class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-green-900/60 text-green-300 border border-green-700">
-                                    ✓ Yes
-                                </span>
-                                <span v-else
-                                    class="inline-flex items-center text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">
-                                    ✕ No
-                                </span>
-                            </td>
-
-                            <!-- Actions -->
-                            <td class="p-3 text-center whitespace-nowrap">
+                            <!-- Actions (Minimum Width) -->
+                            <td class="p-2.5 sm:p-3 text-center w-px whitespace-nowrap">
                                 <div class="flex items-center justify-center space-x-1">
                                     <!-- Pencil icon to edit -->
                                     <button @click="startEdit(q)"
@@ -330,8 +346,8 @@
                     </tbody>
                 </table>
             </div>
+            </div>
         </div>
-
     </div>
 </template>
 
@@ -343,6 +359,49 @@ const SERVER_BASE = ''
 const questions = ref([])
 const editingQuestionId = ref(null)
 const formError = ref('')
+
+// Authentication state
+const isAuthenticated = ref(sessionStorage.getItem('admin_authenticated') === 'true')
+const passwordInput = ref('')
+const authError = ref('')
+const isCheckingPassword = ref(false)
+
+const handleUnlock = async () => {
+    if (!passwordInput.value) {
+        authError.value = 'Please enter the password.'
+        return
+    }
+    authError.value = ''
+    isCheckingPassword.value = true
+    try {
+        const res = await fetch(`${API_BASE}/auth/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: passwordInput.value })
+        })
+        if (res.ok) {
+            isAuthenticated.value = true
+            sessionStorage.setItem('admin_authenticated', 'true')
+            passwordInput.value = ''
+            await fetchQuestions()
+        } else {
+            const data = await res.json().catch(() => ({}))
+            authError.value = data.error || 'Incorrect password. Access denied.'
+        }
+    } catch (err) {
+        authError.value = 'Unable to verify password. Please try again.'
+    } finally {
+        isCheckingPassword.value = false
+    }
+}
+
+const handleLock = () => {
+    isAuthenticated.value = false
+    sessionStorage.removeItem('admin_authenticated')
+    questions.value = []
+    passwordInput.value = ''
+    authError.value = ''
+}
 
 // Native file input DOM refs
 const questionFileInput = ref(null)
@@ -377,10 +436,6 @@ const form = ref(defaultForm())
 const getMediaUrl = (url) => {
     if (!url) return ''
     return url.startsWith('http') ? url : `${SERVER_BASE}${url}`
-}
-
-const hasOptionImages = (q) => {
-    return q.options && q.options.some(o => !!o.media_url)
 }
 
 const formatDate = (isoString) => {
@@ -448,7 +503,9 @@ const groupedQuestions = computed(() => {
 })
 
 onMounted(() => {
-    fetchQuestions()
+    if (isAuthenticated.value) {
+        fetchQuestions()
+    }
 })
 
 const fetchQuestions = async () => {

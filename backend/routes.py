@@ -6,6 +6,18 @@ from models import db, Question, Option, GameSession
 
 api = Blueprint('api', __name__)
 
+# --- AUTHENTICATION ---
+@api.route('/auth/verify', methods=['POST'])
+def verify_admin_password():
+    data = request.json or {}
+    password = data.get('password', '')
+    expected_password = os.getenv('ADMIN_PASSWORD', 'admin')
+    
+    if password and password == expected_password:
+        return jsonify({"success": True, "message": "Authenticated"}), 200
+    
+    return jsonify({"error": "Invalid password"}), 401
+
 # --- MEDIA UPLOADS ---
 @api.route('/upload', methods=['POST'])
 def upload_file():
