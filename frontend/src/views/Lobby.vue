@@ -5,8 +5,10 @@
         <transition name="fade">
             <div v-if="cancellationMessage"
                 class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div class="bg-gray-800 border border-red-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl text-center">
-                    <div class="w-16 h-16 bg-red-900/50 border border-red-500/40 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
+                <div
+                    class="bg-gray-800 border border-red-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl text-center">
+                    <div
+                        class="w-16 h-16 bg-red-900/50 border border-red-500/40 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
                         🛑
                     </div>
                     <h3 class="text-2xl font-bold text-white mb-2">Lobby Cancelled</h3>
@@ -23,7 +25,8 @@
         <div class="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
             <div class="flex items-center space-x-3">
                 <h1 class="text-2xl sm:text-3xl font-extrabold text-blue-400">Game Lobby</h1>
-                <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-green-900/70 border border-green-600 text-green-300 flex items-center gap-1.5 animate-pulse">
+                <span
+                    class="px-2.5 py-1 rounded-full text-xs font-bold bg-green-900/70 border border-green-600 text-green-300 flex items-center gap-1.5 animate-pulse">
                     <span class="w-2 h-2 rounded-full bg-green-400"></span>
                     Waiting for players
                 </span>
@@ -40,7 +43,8 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             <!-- PLAYERS LIST CARD -->
-            <div class="bg-gray-800 p-5 sm:p-6 rounded-2xl border border-gray-700 shadow-xl flex flex-col justify-between">
+            <div
+                class="bg-gray-800 p-5 sm:p-6 rounded-2xl border border-gray-700 shadow-xl flex flex-col justify-between">
                 <div>
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -53,7 +57,7 @@
                         <div v-for="player in lobby.players" :key="player.id"
                             class="flex items-center justify-between p-3 rounded-xl border transition"
                             :class="player.id === playerId ? 'bg-gray-900/90 border-blue-500/60 ring-1 ring-blue-500/30' : 'bg-gray-900/50 border-gray-700/60'">
-                            
+
                             <div class="flex items-center space-x-3 min-w-0">
                                 <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
                                     :class="player.is_admin ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40' : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'">
@@ -65,9 +69,11 @@
                                         <span class="font-bold text-sm text-gray-100 truncate block">
                                             {{ player.name }}
                                         </span>
-                                        <span v-if="player.id === playerId" class="text-xs text-blue-400 font-semibold">(You)</span>
+                                        <span v-if="player.id === playerId"
+                                            class="text-xs text-blue-400 font-semibold">(You)</span>
                                     </div>
-                                    <span v-if="player.is_admin" class="text-xs text-yellow-400/80 font-medium">Host / Admin</span>
+                                    <span v-if="player.is_admin" class="text-xs text-yellow-400/80 font-medium">Host /
+                                        Admin</span>
                                 </div>
                             </div>
 
@@ -88,9 +94,7 @@
                         <div class="flex gap-2">
                             <input type="text" v-model="editedName" maxlength="20"
                                 class="flex-1 p-2 bg-gray-800 rounded-lg border border-gray-600 focus:border-blue-500 outline-none text-white text-sm"
-                                placeholder="Enter nickname"
-                                @keyup.enter="saveNickname"
-                                autofocus />
+                                placeholder="Enter nickname" @keyup.enter="saveNickname" autofocus />
                             <button @click="saveNickname" type="button"
                                 class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition cursor-pointer">
                                 Save
@@ -115,6 +119,28 @@
             <!-- RIGHT COLUMN: SETTINGS & CONTROLS -->
             <div class="space-y-6">
 
+                <!-- QUESTION DATASET POOL WARNING FOR ADMIN -->
+                <div v-if="isAdmin && lobby.unlocked_questions_count !== undefined && lobby.unlocked_questions_count < 30"
+                    class="p-4 bg-amber-950/60 border border-amber-500/60 rounded-2xl shadow-xl">
+                    <div class="flex items-start gap-3">
+                        <span class="text-2xl shrink-0">⚠️</span>
+                        <div class="flex-1">
+                            <h4 class="text-sm font-bold text-amber-300">Dataset Question Shortage</h4>
+                            <p class="text-xs text-amber-200/90 mt-0.5 leading-relaxed">
+                                The dataset has only <strong class="text-white">{{ lobby.unlocked_questions_count
+                                }}</strong> of {{ lobby.total_questions_count || 45 }} questions unlocked (30 needed
+                                for a match).
+                            </p>
+                            <button @click="unlockAllQuestions" type="button" :disabled="isUnlocking"
+                                class="mt-2.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 text-gray-950 hover:text-white rounded-lg font-bold text-xs transition shadow flex items-center gap-1.5 cursor-pointer">
+                                <span v-if="isUnlocking"
+                                    class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                                <span>🔓 Unlock All Questions</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ADMIN SETTINGS CARD (Only shown to Admin) -->
                 <div v-if="isAdmin" class="bg-gray-800 p-5 sm:p-6 rounded-2xl border border-gray-700 shadow-xl">
                     <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -127,7 +153,8 @@
                                 <label class="text-sm font-medium text-gray-300">Time per question (seconds)</label>
                                 <span class="text-blue-400 font-mono font-bold">{{ localSettings.time_limit }}s</span>
                             </div>
-                            <input type="range" v-model.number="localSettings.time_limit" @change="broadcastSettings" min="5" max="60" step="1"
+                            <input type="range" v-model.number="localSettings.time_limit" @change="broadcastSettings"
+                                min="5" max="60" step="1"
                                 class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                             <div class="flex justify-between text-xs text-gray-500 mt-1 font-mono">
                                 <span>5s</span>
@@ -140,10 +167,27 @@
                         <div>
                             <div class="flex justify-between items-center mb-1.5">
                                 <label class="text-sm font-medium text-gray-300">Base points per question</label>
-                                <span class="text-yellow-400 font-mono font-bold">{{ localSettings.base_points }} pts</span>
+                                <span class="text-yellow-400 font-mono font-bold">{{ localSettings.base_points }}
+                                    pts</span>
                             </div>
-                            <input type="number" v-model.number="localSettings.base_points" @change="broadcastSettings" min="10" max="1000" step="10"
+                            <input type="number" v-model.number="localSettings.base_points" @change="broadcastSettings"
+                                min="10" max="1000" step="10"
                                 class="w-full p-2.5 bg-gray-900 rounded-lg border border-gray-600 focus:border-blue-500 text-white outline-none font-mono text-sm" />
+                        </div>
+
+                        <div class="pt-2 border-t border-gray-700/60">
+                            <div
+                                class="flex items-center justify-between p-3 bg-gray-900/80 rounded-xl border border-gray-700">
+                                <div class="pr-2">
+                                    <label class="text-sm font-semibold text-gray-200 block">Lock chosen
+                                        questions</label>
+                                    <span class="text-xs text-gray-400">Guarantees next game only picks fresh
+                                        questions</span>
+                                </div>
+                                <input type="checkbox" v-model="localSettings.lock_chosen_questions"
+                                    @change="broadcastSettings"
+                                    class="w-5 h-5 rounded accent-blue-600 cursor-pointer" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -173,8 +217,7 @@
                 <div class="bg-gray-800 p-5 sm:p-6 rounded-2xl border border-gray-700 shadow-xl">
                     <!-- ADMIN ACTIONS -->
                     <div v-if="isAdmin" class="space-y-3">
-                        <button @click="startGame" type="button"
-                            :disabled="nonAdminPlayersCount < 1"
+                        <button @click="startGame" type="button" :disabled="nonAdminPlayersCount < 1"
                             :class="nonAdminPlayersCount < 1
                                 ? 'bg-gray-700 text-gray-400 cursor-not-allowed border border-gray-600'
                                 : 'bg-green-600 hover:bg-green-500 text-white shadow-lg hover:shadow-green-500/20 cursor-pointer'"
@@ -193,9 +236,12 @@
 
                     <!-- PLAYER WAITING VIEW -->
                     <div v-else class="text-center py-4 space-y-3">
-                        <div class="w-10 h-10 border-3 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                        <div
+                            class="w-10 h-10 border-3 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto">
+                        </div>
                         <p class="text-sm font-semibold text-gray-300">
-                            Waiting for the admin (<span class="text-blue-300">{{ lobby.admin_name || 'Host' }}</span>) to start the game...
+                            Waiting for the admin (<span class="text-blue-300">{{ lobby.admin_name || 'Host' }}</span>)
+                            to start the game...
                         </p>
                     </div>
                 </div>
@@ -231,13 +277,15 @@ const lobby = ref({
 })
 
 const localSettings = ref({
-    time_limit: 10,
-    base_points: 100
+    time_limit: 15,
+    base_points: 100,
+    lock_chosen_questions: true
 })
 
 const cancellationMessage = ref('')
 const isEditingName = ref(false)
 const editedName = ref('')
+const isUnlocking = ref(false)
 
 onMounted(() => {
     // If not joined, redirect home
@@ -271,8 +319,42 @@ const handleLobbyUpdate = (data) => {
 
     lobby.value = data
     if (data.settings) {
-        localSettings.value.time_limit = data.settings.time_limit
-        localSettings.value.base_points = data.settings.base_points
+        if (data.settings.time_limit !== undefined) localSettings.value.time_limit = data.settings.time_limit
+        if (data.settings.base_points !== undefined) localSettings.value.base_points = data.settings.base_points
+        if (data.settings.lock_chosen_questions !== undefined) localSettings.value.lock_chosen_questions = data.settings.lock_chosen_questions
+    }
+}
+
+const unlockAllQuestions = async () => {
+    isUnlocking.value = true
+    try {
+        const res = await fetch('/api/questions/unlock-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: playerToken.value })
+        })
+        const data = await res.json()
+        if (data && data.success) {
+            if (data.lobby) {
+                handleLobbyUpdate(data.lobby)
+            }
+            socket.emit('get_lobby_state')
+        } else {
+            socket.emit('unlock_all_questions', { token: playerToken.value }, (socketRes) => {
+                if (socketRes && socketRes.success && socketRes.lobby) {
+                    handleLobbyUpdate(socketRes.lobby)
+                }
+            })
+        }
+    } catch (e) {
+        console.error('Error unlocking questions:', e)
+        socket.emit('unlock_all_questions', { token: playerToken.value }, (socketRes) => {
+            if (socketRes && socketRes.success && socketRes.lobby) {
+                handleLobbyUpdate(socketRes.lobby)
+            }
+        })
+    } finally {
+        isUnlocking.value = false
     }
 }
 
@@ -312,7 +394,8 @@ const broadcastSettings = () => {
         token: playerToken.value,
         settings: {
             time_limit: localSettings.value.time_limit,
-            base_points: localSettings.value.base_points
+            base_points: localSettings.value.base_points,
+            lock_chosen_questions: localSettings.value.lock_chosen_questions
         }
     })
 }
@@ -365,9 +448,9 @@ const startGame = () => {
 .fade-leave-active {
     transition: opacity 0.2s ease;
 }
+
 .fade-enter-from,
 .fade-leave-to {
     opacity: 0;
 }
 </style>
-

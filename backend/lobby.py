@@ -17,7 +17,8 @@ class LobbyManager:
         self.players = {}  # player_id -> dict
         self.settings = {
             "time_limit": 15,
-            "base_points": 100
+            "base_points": 100,
+            "lock_chosen_questions": True
         }
         self.created_at = None
 
@@ -29,6 +30,9 @@ class LobbyManager:
         self.current_round_answers = {}  # player_id -> { letter, time_left, time_ratio, timestamp }
         self.player_scores = {}  # player_id -> int
         self.round_deltas = {}  # player_id -> { player_id, name, letter, is_correct, delta, score }
+        self.wrong_block_deltas = {}  # Cumulative points gained/lost during wrong questions block
+        self.round_points_type = 'standard'  # 'standard' | 'wrong_block'
+        self.final_countdown_label = ""
 
     def open_lobby(self, admin_name=None):
         if self.is_active:
@@ -115,6 +119,9 @@ class LobbyManager:
             except (ValueError, TypeError):
                 pass
 
+        if 'lock_chosen_questions' in settings_data:
+            self.settings['lock_chosen_questions'] = bool(settings_data['lock_chosen_questions'])
+
         return self.settings, None
 
     def leave_lobby(self, player_id, token):
@@ -142,10 +149,46 @@ class LobbyManager:
         self.reset()
         return True, None
 
+    def is_first_wrong_question(self, index):
+        if index < 0 or index >= len(self.match_questions):
+            return False
+        curr_q = self.match_questions[index]
+        if curr_q['question_type'] != 'wrong':
+            return False
+        if index == 0:
+            return True
+        prev_q = self.match_questions[index - 1]
+        return prev_q['question_type'] != 'wrong'
+
+    def is_audio_question(self, index):
+        if index < 0 or index >= len(self.match_questions):
+            return False
+        return self.match_questions[index]['question_type'] == 'music_single'
+
+    def _get_final_countdown_label(self, index):
+        labels = {
+            25: "5 Questions Remaining",
+            26: "4 Questions Remaining",
+            27: "3 Questions Remaining",
+            28: "2 Questions Remaining",
+            29: "Final Question"
+        }
+        return labels.get(index, "Final Question")
+
     def load_match_questions(self, db_session):
-        """Builds a curated list of exactly 30 questions from active questions."""
+        """Builds a curated list of exactly 30 questions from active questions.
+        Guarantees:
+        1. Final 5 questions (indices 25-29) are strictly 'basic' questions.
+        2. All 'wrong' questions are grouped consecutively in one block.
+        3. Includes 1 ghost and 1 music question.
+        4. Intelligently locks questions if lock_chosen_questions is enabled,
+           preserving at least one question of each specialty type for subsequent matches.
+        """
+        random.seed()
         from models import Question
         all_active = db_session.query(Question).filter_by(is_active=True).all()
+        if len(all_active) < 30:
+            return False, f"Not enough unlocked questions in dataset: only {len(all_active)} available (30 needed). Please unlock questions in Admin or click 'Unlock All Questions'."
 
         ghost_pool = [q for q in all_active if q.question_type == 'ghost']
         music_pool = [q for q in all_active if q.question_type == 'music_single']
@@ -157,32 +200,48 @@ class LobbyManager:
         random.shuffle(wrong_pool)
         random.shuffle(basic_pool)
 
-        # Select target counts: 1 ghost, 1 music, up to 14 wrong, remaining basic to reach 30
-        selected = []
-        if ghost_pool:
-            selected.append(ghost_pool.pop(0))
-        if music_pool:
-            selected.append(music_pool.pop(0))
+        # 1. Final 5 MUST be basic questions
+        final_5 = []
+        while len(final_5) < 5 and basic_pool:
+            final_5.append(basic_pool.pop(0))
+        random.shuffle(final_5)
 
-        # Take up to 14 wrong questions
-        wrong_take = min(14, len(wrong_pool))
-        selected.extend(wrong_pool[:wrong_take])
+        # 2. For the first 25 questions:
+        selected_ghost = [ghost_pool.pop(0)] if ghost_pool else []
+        selected_music = [music_pool.pop(0)] if music_pool else []
 
-        # Fill the remainder up to 30 with basic questions
-        needed = 30 - len(selected)
-        basic_take = min(needed, len(basic_pool))
-        selected.extend(basic_pool[:basic_take])
+        # Take up to 12 wrong questions and keep them grouped
+        wrong_take = min(12, len(wrong_pool))
+        selected_wrong = wrong_pool[:wrong_take]
+        random.shuffle(selected_wrong)
 
-        # If still under 30 (e.g. if DB had fewer), fill with any remaining wrong or active
-        if len(selected) < 30:
-            remaining = [q for q in all_active if q not in selected]
-            random.shuffle(remaining)
-            selected.extend(remaining[:30 - len(selected)])
+        # Remaining needed for first 25
+        needed_basic = 25 - (len(selected_ghost) + len(selected_music) + len(selected_wrong))
+        basic_take = min(needed_basic, len(basic_pool))
+        selected_first_25_basic = basic_pool[:basic_take]
+        basic_pool = basic_pool[basic_take:]
 
-        # Shuffle the final 30 questions
-        random.shuffle(selected)
-        if len(selected) > 30:
-            selected = selected[:30]
+        deficit = 25 - (len(selected_ghost) + len(selected_music) + len(selected_wrong) + len(selected_first_25_basic))
+        if deficit > 0 and len(wrong_pool) > wrong_take:
+            extra_wrong = wrong_pool[wrong_take:wrong_take + deficit]
+            selected_wrong.extend(extra_wrong)
+
+        standard_first = selected_ghost + selected_music + selected_first_25_basic
+        random.shuffle(standard_first)
+
+        # Place the consecutive block of wrong questions in a randomized position among standard questions
+        insert_idx = random.randint(1, max(1, len(standard_first) - 1)) if len(standard_first) > 1 else len(standard_first) // 2
+        first_25 = standard_first[:insert_idx] + selected_wrong + standard_first[insert_idx:]
+
+        # If still under 25, fill with any leftover questions
+        if len(first_25) < 25:
+            used_ids = set(q.id for q in first_25 + final_5)
+            leftover = [q for q in all_active if q.id not in used_ids]
+            random.shuffle(leftover)
+            first_25.extend(leftover[:25 - len(first_25)])
+
+        # Assemble match: first 25 + final 5
+        selected = first_25[:25] + final_5
 
         letters = ['A', 'B', 'C', 'D', 'E']
         prepared_questions = []
@@ -230,8 +289,35 @@ class LobbyManager:
                 'winning_letter': winning_letter
             })
 
+        # Intelligent locking if setting is True
+        if self.settings.get('lock_chosen_questions', True):
+            active_ghost_count = len([q for q in all_active if q.question_type == 'ghost'])
+            active_music_count = len([q for q in all_active if q.question_type == 'music_single'])
+            active_wrong_count = len([q for q in all_active if q.question_type == 'wrong'])
+
+            for q in selected:
+                if q.question_type == 'ghost':
+                    if active_ghost_count > 1:
+                        q.is_active = False
+                        active_ghost_count -= 1
+                elif q.question_type == 'music_single':
+                    if active_music_count > 1:
+                        q.is_active = False
+                        active_music_count -= 1
+                elif q.question_type == 'wrong':
+                    if active_wrong_count > 1:
+                        q.is_active = False
+                        active_wrong_count -= 1
+                else:
+                    q.is_active = False
+
+            try:
+                db_session.commit()
+            except Exception:
+                db_session.rollback()
+
         self.match_questions = prepared_questions
-        return self.match_questions
+        return True, None
 
     def start_game(self, token, db_session=None):
         if not self.is_active:
@@ -244,7 +330,9 @@ class LobbyManager:
             return False, "Cannot start game without at least one player."
 
         if db_session:
-            self.load_match_questions(db_session)
+            success, err = self.load_match_questions(db_session)
+            if not success:
+                return False, err
 
         # Reset scores
         self.player_scores = {pid: 0 for pid in self.players}
@@ -265,12 +353,19 @@ class LobbyManager:
         if self.status == 'guide':
             self.guide_step += 1
             if self.guide_step > 3:
-                # Transition to Question 1 Intro!
+                # Transition to in_game!
                 self.status = 'in_game'
                 self.question_index = 0
-                self.question_phase = 'intro'
                 self.current_round_answers = {}
                 self.round_deltas = {}
+
+                # Check if Question 0 has a special intro
+                if self.is_first_wrong_question(0):
+                    self.question_phase = 'wrong_round_intro'
+                elif self.is_audio_question(0):
+                    self.question_phase = 'audio_intro'
+                else:
+                    self.question_phase = 'intro'
 
         return True, None
 
@@ -287,63 +382,133 @@ class LobbyManager:
         if self.status != 'in_game':
             return False, "Game not active."
 
-        # State machine for question progression:
-        if self.question_phase == 'intro':
-            # Reveal ladder animation and start 15s answering timer
+        # 1. WRONG ROUND INTRO -> advance into first wrong question
+        if self.question_phase == 'wrong_round_intro':
             self.question_phase = 'ladder'
             self.round_started_at = time.time()
             self.current_round_answers = {}
             self.round_deltas = {}
             return True, None
 
-        elif self.question_phase == 'ladder':
-            # Admin forced end or timer expired
-            self._evaluate_round()
-            self.question_phase = 'ended'
-            return True, None
-
-        elif self.question_phase == 'ended':
-            # If last question of the match finished
-            if self.question_index >= len(self.match_questions) - 1:
-                self.question_phase = 'finished'
-                return True, None
-
-            # If during the last 5 questions (Q26-30, indices 25 to 29):
-            # No round points view! Advance directly to next question intro.
-            if self.question_index >= 25:
-                self.question_index += 1
-                self.question_phase = 'intro'
-                self.current_round_answers = {}
-                self.round_deltas = {}
-                return True, None
-
-            # For questions 0 to 24 (Q1 to Q25): show round points view
-            self.question_phase = 'round_points'
-            return True, None
-
-        elif self.question_phase == 'round_points':
-            # If we just viewed round points for Question 25 (index 24):
-            # Show the "Last 5 Questions" suspense warning screen!
-            if self.question_index == 24:
-                self.question_phase = 'last_5_warning'
-                return True, None
-
-            # Advance to next question intro
-            self.question_index += 1
+        # 2. AUDIO QUESTION INTRO -> advance into audio question intro (5s countdown -> audio)
+        elif self.question_phase == 'audio_intro':
             self.question_phase = 'intro'
             self.current_round_answers = {}
             self.round_deltas = {}
             return True, None
 
+        # 3. INTRO -> advance to ladder (reveals options & starts timer)
+        elif self.question_phase == 'intro':
+            self.question_phase = 'ladder'
+            self.round_started_at = time.time()
+            self.current_round_answers = {}
+            self.round_deltas = {}
+            return True, None
+
+        # 4. LADDER -> evaluates round upon timeout or manual advance
+        elif self.question_phase == 'ladder':
+            self._evaluate_round()
+            self.question_phase = 'ended'
+            return True, None
+
+        # 5. ENDED -> determines next step depending on question type / position
+        elif self.question_phase == 'ended':
+            if self.question_index >= len(self.match_questions) - 1:
+                self.question_phase = 'finished'
+                return True, None
+
+            curr_q = self.match_questions[self.question_index]
+
+            # If current question is part of the rapid-fire wrong questions block:
+            if curr_q['question_type'] == 'wrong':
+                next_idx = self.question_index + 1
+                next_q = self.match_questions[next_idx] if next_idx < len(self.match_questions) else None
+
+                # If the next question is also a wrong question, jump straight into ladder:
+                if next_q and next_q['question_type'] == 'wrong':
+                    self.question_index = next_idx
+                    self.question_phase = 'ladder'
+                    self.round_started_at = time.time()
+                    self.current_round_answers = {}
+                    self.round_deltas = {}
+                    return True, None
+                else:
+                    # Wrong questions block has finished! Transition to round points summary with cumulative deltas
+                    self.question_phase = 'round_points'
+                    self.round_points_type = 'wrong_block'
+                    self.round_deltas = {}
+                    for pid, pdata in self.wrong_block_deltas.items():
+                        self.round_deltas[pid] = {
+                            'player_id': pid,
+                            'name': pdata['name'],
+                            'letter': None,
+                            'is_correct': pdata['delta'] > 0,
+                            'delta': pdata['delta'],
+                            'duration': None,
+                            'score': self.player_scores.get(pid, 0)
+                        }
+                    return True, None
+
+            # If in the final 5 questions (Q26-30, indices 25 to 29):
+            if self.question_index >= 25:
+                next_idx = self.question_index + 1
+                if next_idx >= len(self.match_questions):
+                    self.question_phase = 'finished'
+                    return True, None
+
+                self.question_index = next_idx
+                self.question_phase = 'final_countdown'
+                self.final_countdown_label = self._get_final_countdown_label(next_idx)
+                return True, None
+
+            # Standard questions (0 to 24): show round points view
+            self.question_phase = 'round_points'
+            self.round_points_type = 'standard'
+            return True, None
+
+        # 6. ROUND POINTS -> advances to next question or last_5_warning
+        elif self.question_phase == 'round_points':
+            self.round_points_type = 'standard'
+            if self.question_index == 24:
+                self.question_phase = 'last_5_warning'
+                return True, None
+
+            next_idx = self.question_index + 1
+            if next_idx >= len(self.match_questions):
+                self.question_phase = 'finished'
+                return True, None
+
+            self.question_index = next_idx
+            self.current_round_answers = {}
+            self.round_deltas = {}
+
+            if self.is_first_wrong_question(next_idx):
+                self.question_phase = 'wrong_round_intro'
+                self.wrong_block_deltas = {}
+            elif self.is_audio_question(next_idx):
+                self.question_phase = 'audio_intro'
+            else:
+                self.question_phase = 'intro'
+            return True, None
+
+        # 7. LAST 5 WARNING -> advances to Final Fifth interstitial
         elif self.question_phase == 'last_5_warning':
-            # Move from warning screen to Question 26 (index 25) intro
             self.question_index = 25
+            self.question_phase = 'final_countdown'
+            self.final_countdown_label = 'Final Fifth'
+            self.current_round_answers = {}
+            self.round_deltas = {}
+            return True, None
+
+        # 8. FINAL COUNTDOWN INTERSTITIAL -> advances into that final question intro
+        elif self.question_phase == 'final_countdown':
             self.question_phase = 'intro'
             self.current_round_answers = {}
             self.round_deltas = {}
             return True, None
 
         return True, None
+
 
     def end_question_timer(self):
         """Called when 15s timer expires to transition from ladder to ended."""
@@ -395,6 +560,7 @@ class LobbyManager:
                     'letter': letter,
                     'is_correct': is_correct,
                     'delta': points_delta,
+                    'duration': ans.get('duration', 0.0),
                     'score': self.player_scores[pid]
                 }
             else:
@@ -409,6 +575,7 @@ class LobbyManager:
                         'letter': None,
                         'is_correct': True,
                         'delta': points_delta,
+                        'duration': None,
                         'score': self.player_scores[pid],
                         'survived_ghost': True
                     }
@@ -419,11 +586,26 @@ class LobbyManager:
                         'letter': None,
                         'is_correct': None,
                         'delta': 0,
+                        'duration': None,
                         'score': self.player_scores.get(pid, 0)
                     }
 
+        # For wrong questions, accumulate points gained or lost into wrong_block_deltas
+        if q_type == 'wrong':
+            for pid, player in self.players.items():
+                if player.get('is_admin'):
+                    continue
+                if pid not in self.wrong_block_deltas:
+                    self.wrong_block_deltas[pid] = {
+                        'player_id': pid,
+                        'name': player['name'],
+                        'delta': 0
+                    }
+                delta_for_q = self.round_deltas.get(pid, {}).get('delta', 0)
+                self.wrong_block_deltas[pid]['delta'] += delta_for_q
+
     def submit_answer(self, player_id, token, letter):
-        """Records a player's single answer lock-in during the 15s window."""
+        """Records a player's single answer lock-in during the answering window."""
         if not self.is_active or self.status != 'in_game':
             return False, "No active question in progress."
 
@@ -441,14 +623,17 @@ class LobbyManager:
         if letter not in q['valid_letters']:
             return False, "Invalid option letter."
 
+        total_window = 5.0 if q['question_type'] == 'wrong' else 15.0
         elapsed = time.time() - (self.round_started_at or time.time())
-        time_left = max(0.0, 15.0 - elapsed)
-        time_ratio = max(0.01, min(1.0, time_left / 15.0))
+        duration = round(elapsed, 2)
+        time_left = max(0.0, total_window - elapsed)
+        time_ratio = max(0.01, min(1.0, time_left / total_window))
 
         self.current_round_answers[player_id] = {
             'letter': letter,
             'time_left': round(time_left, 2),
             'time_ratio': time_ratio,
+            'duration': duration,
             'timestamp': time.time()
         }
         return True, None
@@ -463,7 +648,7 @@ class LobbyManager:
             return {"allowed": False, "reason": "Scoreboard cannot be viewed during a question."}
 
         # 2. Blocked during last 5 questions (Q26-30, indices >= 25) and last 5 warning screen
-        if self.question_index >= 25 or self.question_phase == 'last_5_warning':
+        if self.question_index >= 25 or self.question_phase in ['last_5_warning', 'final_countdown']:
             return {"allowed": False, "reason": "Scoreboard is hidden for the final 5 questions."}
 
         # Build sorted leaderboard
@@ -479,7 +664,7 @@ class LobbyManager:
         ranked.sort(key=lambda x: x["score"], reverse=True)
         return {"allowed": True, "leaderboard": ranked}
 
-    def get_public_state(self):
+    def get_public_state(self, *args, **kwargs):
         if not self.is_active:
             return {
                 "is_active": False,
@@ -511,6 +696,13 @@ class LobbyManager:
             "guide_step": self.guide_step
         }
 
+        try:
+            from models import Question
+            state["total_questions_count"] = Question.query.count()
+            state["unlocked_questions_count"] = Question.query.filter_by(is_active=True).count()
+        except Exception:
+            pass
+
         if self.status == 'in_game' and self.match_questions:
             q_idx = self.question_index
             q = self.match_questions[q_idx] if q_idx < len(self.match_questions) else None
@@ -518,6 +710,11 @@ class LobbyManager:
             # Prepare sanitized question representation
             question_data = None
             if q:
+                # Mask ghost as basic until revealed in ended/round_points/finished
+                reported_type = q["question_type"]
+                if reported_type == 'ghost' and self.question_phase not in ['ended', 'round_points', 'finished']:
+                    reported_type = 'basic'
+
                 # In intro: options are hidden
                 if self.question_phase == 'intro':
                     options_sanitized = []
@@ -545,7 +742,8 @@ class LobbyManager:
 
                 question_data = {
                     "id": q["id"],
-                    "question_type": q["question_type"],
+                    "question_type": reported_type,
+                    "actual_type": q["question_type"] if self.question_phase in ['ended', 'round_points', 'finished'] else None,
                     "text": q["text"],
                     "media_url": q["media_url"],
                     "medley_urls": q["medley_urls"],
@@ -558,14 +756,17 @@ class LobbyManager:
                 "question_index": self.question_index,
                 "total_questions": len(self.match_questions),
                 "question_phase": self.question_phase,
+                "round_points_type": self.round_points_type,
+                "final_countdown_label": self.final_countdown_label,
                 "question": question_data,
                 "round_started_at": self.round_started_at,
                 "round_time_limit": 15,
                 "answered_player_ids": list(self.current_round_answers.keys()),
                 "round_deltas": self.round_deltas if self.question_phase in ['ended', 'round_points', 'finished'] else {},
                 "is_last_5": bool(self.question_index >= 25),
-                "can_view_scoreboard": bool(self.question_phase != 'ladder' and self.question_index < 25 and self.question_phase != 'last_5_warning')
+                "can_view_scoreboard": bool(self.question_phase != 'ladder' and self.question_index < 25 and self.question_phase not in ['last_5_warning', 'final_countdown'])
             })
+
 
             if self.question_phase == 'finished':
                 # Final leaderboard

@@ -114,6 +114,20 @@ def create_app():
         socketio.emit('lobby_updated', state, to='lobby')
         return {"success": True, "settings": settings, "lobby": state}
 
+    @socketio.on('unlock_all_questions')
+    def handle_unlock_all(data=None):
+        data = data or {}
+        token = data.get('token')
+        admin = lobby_manager.get_admin_player()
+        if not admin or admin.get('token') != token:
+            return {"success": False, "error": "Unauthorized"}
+        from models import Question
+        Question.query.update({Question.is_active: True})
+        db.session.commit()
+        state = lobby_manager.get_public_state()
+        socketio.emit('lobby_updated', state, to='lobby')
+        return {"success": True, "lobby": state}
+
     @socketio.on('start_game')
     def handle_start_game(data=None):
         data = data or {}

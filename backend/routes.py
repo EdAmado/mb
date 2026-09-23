@@ -150,6 +150,14 @@ def delete_question(id):
     db.session.commit()
     return '', 204
 
+@api.route('/questions/unlock-all', methods=['POST', 'PATCH'])
+def unlock_all_questions():
+    Question.query.update({Question.is_active: True})
+    db.session.commit()
+    from lobby import lobby_manager
+    state = lobby_manager.get_public_state()
+    return jsonify({"success": True, "message": "All questions unlocked", "lobby": state}), 200
+
 # --- GAME SESSIONS ---
 @api.route('/games', methods=['GET'])
 def get_games():
